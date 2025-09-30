@@ -1,0 +1,291 @@
+# High Tourist Season Load Testing Configuration
+# Simulates peak tourism periods in Hong Kong (Chinese New Year, Golden Week, Christmas)
+
+config:
+  target: 'http://localhost:8080'
+  phases:
+    # Pre-peak warm-up (normal traffic)
+    - duration: 300  # 5 minutes
+      arrivalRate: 10
+      name: "Normal Traffic"
+    
+    # Early peak (morning rush)
+    - duration: 600  # 10 minutes
+      arrivalRate: 50
+      rampTo: 100
+      name: "Morning Peak"
+    
+    # Peak tourist season (sustained high load)
+    - duration: 1800  # 30 minutes
+      arrivalRate: 150
+      name: "Peak Season Load"
+    
+    # Super peak (Chinese New Year / Golden Week)
+    - duration: 900  # 15 minutes
+      arrivalRate: 200
+      rampTo: 300
+      name: "Super Peak Load"
+    
+    # Spike simulation (viral social media event)
+    - duration: 300  # 5 minutes
+      arrivalRate: 500
+      name: "Viral Spike"
+    
+    # Recovery period
+    - duration: 600  # 10 minutes
+      arrivalRate: 100
+      rampTo: 20
+      name: "Recovery"
+  
+  defaults:
+    headers:
+      Content-Type: 'application/json'
+      User-Agent: 'HK-Tourism-LoadTest/1.0'
+  
+  processor: './tourist-season-processor.js'
+  
+  # Realistic user behavior patterns
+  variables:
+    userTypes:
+      - "mainland_chinese"
+      - "international_tourist"
+      - "local_resident"
+      - "business_traveler"
+    
+    languages:
+      - "zh-CN"
+      - "zh-HK"
+      - "en"
+      - "ja"
+      - "ko"
+    
+    interests:
+      - ["culture", "history", "temples"]
+      - ["food", "shopping", "nightlife"]
+      - ["nature", "hiking", "beaches"]
+      - ["family", "entertainment", "theme_parks"]
+      - ["luxury", "fine_dining", "spa"]
+    
+    locations:
+      - { lat: 22.3193, lng: 114.1694, name: "Central" }
+      - { lat: 22.2783, lng: 114.1747, name: "Tsim Sha Tsui" }
+      - { lat: 22.3964, lng: 114.1095, name: "Causeway Bay" }
+      - { lat: 22.2855, lng: 114.1577, name: "Mong Kok" }
+      - { lat: 22.4818, lng: 114.2048, name: "Tai Po" }
+
+scenarios:
+  # Scenario 1: New Tourist Registration and Onboarding (25%)
+  - name: "Tourist Registration Journey"
+    weight: 25
+    flow:
+      - post:
+          url: "/api/auth/register"
+          json:
+            email: "tourist{{ $randomInt(1, 100000) }}@example.com"
+            password: "password123"
+            userType: "{{ userTypes[$randomInt(0, 3)] }}"
+            language: "{{ languages[$randomInt(0, 4)] }}"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+            - json: "$.userId"
+              as: "userId"
+          expect:
+            - statusCode: 201
+      
+      - post:
+          url: "/api/users/preferences"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          json:
+            interests: "{{ interests[$randomInt(0, 4)] }}"
+            budget: "{{ ['low', 'medium', 'high'][$randomInt(0, 2)] }}"
+            groupType: "{{ ['solo', 'couple', 'family', 'friends'][$randomInt(0, 3)] }}"
+            duration: "{{ $randomInt(1, 7) }}"
+          expect:
+            - statusCode: 200
+      
+      - think: 3
+      
+      - get:
+          url: "/api/recommendations"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+            Accept-Language: "{{ languages[$randomInt(0, 4)] }}"
+          expect:
+            - statusCode: 200
+            - contentType: json
+      
+      - think: 5
+
+  # Scenario 2: Existing User Getting Recommendations (35%)
+  - name: "Recommendation Requests"
+    weight: 35
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "existing{{ $randomInt(1, 1000) }}@example.com"
+            password: "password123"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+          expect:
+            - statusCode: 200
+      
+      - get:
+          url: "/api/recommendations"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+            Accept-Language: "{{ languages[$randomInt(0, 4)] }}"
+          qs:
+            lat: "{{ locations[$randomInt(0, 4)].lat }}"
+            lng: "{{ locations[$randomInt(0, 4)].lng }}"
+          expect:
+            - statusCode: 200
+            - contentType: json
+      
+      - think: 2
+      
+      - get:
+          url: "/api/weather/current"
+          qs:
+            lat: "{{ locations[$randomInt(0, 4)].lat }}"
+            lng: "{{ locations[$randomInt(0, 4)].lng }}"
+          expect:
+            - statusCode: 200
+      
+      - get:
+          url: "/api/crowd/levels"
+          qs:
+            locations: "central,tsim_sha_tsui,causeway_bay"
+          expect:
+            - statusCode: 200
+      
+      - think: 3
+
+  # Scenario 3: Itinerary Generation (20%)
+  - name: "Itinerary Generation"
+    weight: 20
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "user{{ $randomInt(1, 1000) }}@example.com"
+            password: "password123"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+          expect:
+            - statusCode: 200
+      
+      - post:
+          url: "/api/itinerary/generate"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          json:
+            duration: "{{ $randomInt(1, 5) }}"
+            startDate: "2024-02-01"
+            interests: "{{ interests[$randomInt(0, 4)] }}"
+            budget: "{{ ['low', 'medium', 'high'][$randomInt(0, 2)] }}"
+            groupType: "{{ ['solo', 'couple', 'family', 'friends'][$randomInt(0, 3)] }}"
+            location:
+              lat: "{{ locations[$randomInt(0, 4)].lat }}"
+              lng: "{{ locations[$randomInt(0, 4)].lng }}"
+          capture:
+            - json: "$.itineraryId"
+              as: "itineraryId"
+          expect:
+            - statusCode: 200
+            - contentType: json
+      
+      - think: 8
+      
+      - get:
+          url: "/api/itinerary/{{ itineraryId }}"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+      
+      - think: 5
+
+  # Scenario 4: Location-based Content Requests (15%)
+  - name: "Location Content Requests"
+    weight: 15
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "tourist{{ $randomInt(1, 1000) }}@example.com"
+            password: "password123"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+          expect:
+            - statusCode: 200
+      
+      - get:
+          url: "/api/location/contextual"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+            Accept-Language: "{{ languages[$randomInt(0, 4)] }}"
+          qs:
+            lat: "{{ locations[$randomInt(0, 4)].lat }}"
+            lng: "{{ locations[$randomInt(0, 4)].lng }}"
+            radius: 500
+          expect:
+            - statusCode: 200
+            - contentType: json
+      
+      - think: 4
+      
+      - get:
+          url: "/api/location/nearby-events"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          qs:
+            lat: "{{ locations[$randomInt(0, 4)].lat }}"
+            lng: "{{ locations[$randomInt(0, 4)].lng }}"
+            radius: 1000
+          expect:
+            - statusCode: 200
+      
+      - think: 2
+
+  # Scenario 5: Real-time Updates and Notifications (5%)
+  - name: "Real-time Updates"
+    weight: 5
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            email: "active{{ $randomInt(1, 500) }}@example.com"
+            password: "password123"
+          capture:
+            - json: "$.token"
+              as: "authToken"
+          expect:
+            - statusCode: 200
+      
+      - get:
+          url: "/api/notifications/recent"
+          headers:
+            Authorization: "Bearer {{ authToken }}"
+          expect:
+            - statusCode: 200
+      
+      - get:
+          url: "/api/weather/alerts"
+          qs:
+            lat: "{{ locations[$randomInt(0, 4)].lat }}"
+            lng: "{{ locations[$randomInt(0, 4)].lng }}"
+          expect:
+            - statusCode: 200
+      
+      - get:
+          url: "/api/crowd/alerts"
+          expect:
+            - statusCode: 200
+      
+      - think: 1

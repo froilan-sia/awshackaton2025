@@ -1,0 +1,282 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-southeast-1
+  EKS_CLUSTER_NAME: hk-tourism-ai-cluster
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-southeast-1.amazonaws.com
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [
+          'api-gateway',
+          'user-service',
+          'location-service',
+          'itinerary-service',
+          'event-service',
+          'crowd-service',
+          'local-insights-service',
+          'translation-service',
+          'practical-tips-service',
+          'notification-service',
+          'sustainability-service',
+          'privacy-service',
+          'weather-service'
+        ]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      if: matrix.service != 'recommendation-service'
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: backend/services/${{ matrix.service }}/package-lock.json
+
+    - name: Setup Python
+      if: matrix.service == 'recommendation-service'
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install Node.js dependencies
+      if: matrix.service != 'recommendation-service'
+      run: |
+        cd backend/services/${{ matrix.service }}
+        npm ci
+
+    - name: Install Python dependencies
+      if: matrix.service == 'recommendation-service'
+      run: |
+        cd backend/services/${{ matrix.service }}
+        pip install -r requirements.txt
+
+    - name: Run Node.js tests
+      if: matrix.service != 'recommendation-service'
+      run: |
+        cd backend/services/${{ matrix.service }}
+        npm test
+
+    - name: Run Python tests
+      if: matrix.service == 'recommendation-service'
+      run: |
+        cd backend/services/${{ matrix.service }}
+        python -m pytest
+
+    - name: Run security scan
+      uses: securecodewarrior/github-action-add-sarif@v1
+      with:
+        sarif-file: 'security-scan-results.sarif'
+      continue-on-error: true
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [
+          'api-gateway',
+          'user-service',
+          'location-service',
+          'recommendation-service',
+          'itinerary-service',
+          'event-service',
+          'crowd-service',
+          'local-insights-service',
+          'translation-service',
+          'practical-tips-service',
+          'notification-service',
+          'sustainability-service',
+          'privacy-service',
+          'weather-service'
+        ]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+
+    - name: Build, tag, and push image to Amazon ECR
+      env:
+        ECR_REPOSITORY: hk-tourism-ai/${{ matrix.service }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        if [ "${{ matrix.service }}" = "api-gateway" ]; then
+          SERVICE_PATH="backend/api-gateway"
+        else
+          SERVICE_PATH="backend/services/${{ matrix.service }}"
+        fi
+        
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $SERVICE_PATH
+        docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+  deploy-infrastructure:
+    needs: [test, build-and-push]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.6.0
+
+    - name: Terraform Init
+      run: |
+        cd infrastructure/terraform
+        terraform init
+
+    - name: Terraform Plan
+      run: |
+        cd infrastructure/terraform
+        terraform plan -var="certificate_arn=${{ secrets.ACM_CERTIFICATE_ARN }}" -var="monitoring_email=${{ secrets.MONITORING_EMAIL }}"
+
+    - name: Terraform Apply
+      run: |
+        cd infrastructure/terraform
+        terraform apply -auto-approve -var="certificate_arn=${{ secrets.ACM_CERTIFICATE_ARN }}" -var="monitoring_email=${{ secrets.MONITORING_EMAIL }}"
+
+  deploy-applications:
+    needs: [deploy-infrastructure]
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Update kubeconfig
+      run: |
+        aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+
+    - name: Create secrets from AWS Secrets Manager
+      run: |
+        # Get database credentials
+        DB_SECRET=$(aws secretsmanager get-secret-value --secret-id hk-tourism-ai/database/password --query SecretString --output text)
+        DB_URL=$(echo $DB_SECRET | jq -r '.endpoint + ":" + (.port|tostring) + "/" + .dbname + "?user=" + .username + "&password=" + .password')
+        
+        # Get Redis credentials
+        REDIS_SECRET=$(aws secretsmanager get-secret-value --secret-id hk-tourism-ai/redis/auth-token --query SecretString --output text)
+        REDIS_URL=$(echo $REDIS_SECRET | jq -r '"redis://:" + .auth_token + "@" + .endpoint + ":" + (.port|tostring)')
+        
+        # Create Kubernetes secrets
+        kubectl create secret generic database-credentials \
+          --from-literal=url="$DB_URL" \
+          --namespace=hk-tourism-ai \
+          --dry-run=client -o yaml | kubectl apply -f -
+        
+        kubectl create secret generic redis-credentials \
+          --from-literal=url="$REDIS_URL" \
+          --namespace=hk-tourism-ai \
+          --dry-run=client -o yaml | kubectl apply -f -
+        
+        kubectl create secret generic external-api-keys \
+          --from-literal=openweather-api-key="${{ secrets.OPENWEATHER_API_KEY }}" \
+          --from-literal=google-maps-api-key="${{ secrets.GOOGLE_MAPS_API_KEY }}" \
+          --from-literal=google-translate-api-key="${{ secrets.GOOGLE_TRANSLATE_API_KEY }}" \
+          --from-literal=hktb-api-key="${{ secrets.HKTB_API_KEY }}" \
+          --namespace=hk-tourism-ai \
+          --dry-run=client -o yaml | kubectl apply -f -
+        
+        kubectl create secret generic jwt-secrets \
+          --from-literal=jwt-secret="${{ secrets.JWT_SECRET }}" \
+          --from-literal=jwt-refresh-secret="${{ secrets.JWT_REFRESH_SECRET }}" \
+          --namespace=hk-tourism-ai \
+          --dry-run=client -o yaml | kubectl apply -f -
+
+    - name: Deploy to Kubernetes
+      run: |
+        # Apply namespace
+        kubectl apply -f infrastructure/kubernetes/namespace.yaml
+        
+        # Apply ConfigMaps
+        kubectl apply -f infrastructure/kubernetes/configmaps.yaml
+        
+        # Update image tags in deployments
+        sed -i "s|:latest|:${{ github.sha }}|g" infrastructure/kubernetes/api-gateway-deployment.yaml
+        sed -i "s|:latest|:${{ github.sha }}|g" infrastructure/kubernetes/microservices-deployment.yaml
+        
+        # Apply deployments
+        kubectl apply -f infrastructure/kubernetes/api-gateway-deployment.yaml
+        kubectl apply -f infrastructure/kubernetes/microservices-deployment.yaml
+        
+        # Wait for deployments to be ready
+        kubectl rollout status deployment/api-gateway -n hk-tourism-ai --timeout=600s
+        kubectl rollout status deployment/user-service -n hk-tourism-ai --timeout=600s
+        kubectl rollout status deployment/location-service -n hk-tourism-ai --timeout=600s
+        kubectl rollout status deployment/recommendation-service -n hk-tourism-ai --timeout=600s
+
+    - name: Run smoke tests
+      run: |
+        # Get ALB endpoint
+        ALB_ENDPOINT=$(aws elbv2 describe-load-balancers --names hk-tourism-ai-alb --query 'LoadBalancers[0].DNSName' --output text)
+        
+        # Wait for ALB to be ready
+        sleep 60
+        
+        # Test API Gateway health endpoint
+        curl -f http://$ALB_ENDPOINT/health || exit 1
+        
+        # Test user service through API Gateway
+        curl -f http://$ALB_ENDPOINT/api/users/health || exit 1
+        
+        # Test location service through API Gateway
+        curl -f http://$ALB_ENDPOINT/api/locations/health || exit 1
+
+  notify:
+    needs: [deploy-applications]
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+    - name: Notify deployment status
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        fields: repo,message,commit,author,action,eventName,ref,workflow
+      if: always()

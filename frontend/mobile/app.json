@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "HK Tourism AI",
+    "slug": "hk-tourism-ai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#E31E24"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.hktourism.ai",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "This app uses location to provide personalized tourism recommendations and location-based content.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app uses location to provide personalized tourism recommendations and location-based content."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#E31E24"
+      },
+      "package": "com.hktourism.ai",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow HK Tourism AI to use your location to provide personalized recommendations and location-based content."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#E31E24"
+        }
+      ]
+    ]
+  }
+}

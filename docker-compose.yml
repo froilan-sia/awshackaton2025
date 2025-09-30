@@ -1,0 +1,204 @@
+version: '3.8'
+
+services:
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./backend/api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - USER_SERVICE_URL=http://user-service:3001
+      - RECOMMENDATION_SERVICE_URL=http://recommendation-service:8000
+      - LOCATION_SERVICE_URL=http://location-service:3002
+      - EVENT_SERVICE_URL=http://event-service:3003
+      - PRIVACY_SERVICE_URL=http://privacy-service:3007
+    depends_on:
+      - user-service
+      - recommendation-service
+      - location-service
+      - event-service
+      - privacy-service
+      - redis
+    volumes:
+      - ./backend/api-gateway:/app
+      - /app/node_modules
+    networks:
+      - hk-tourism-network
+
+  # User Service
+  user-service:
+    build:
+      context: ./backend/services/user-service
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - MONGODB_URI=mongodb://mongodb:27017/hk-tourism-users
+      - JWT_SECRET=your-jwt-secret-key
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./backend/services/user-service:/app
+      - /app/node_modules
+    networks:
+      - hk-tourism-network
+
+  # Recommendation Service (Python/FastAPI)
+  recommendation-service:
+    build:
+      context: ./backend/services/recommendation-service
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=development
+      - MONGODB_URI=mongodb://mongodb:27017/hk-tourism-recommendations
+      - REDIS_URL=redis://redis:6379
+      - ML_MODEL_PATH=/app/models
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./backend/services/recommendation-service:/app
+      - ./backend/services/recommendation-service/models:/app/models
+    networks:
+      - hk-tourism-network
+
+  # Location Service
+  location-service:
+    build:
+      context: ./backend/services/location-service
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=development
+      - PORT=3002
+      - MONGODB_URI=mongodb://mongodb:27017/hk-tourism-locations
+      - REDIS_URL=redis://redis:6379
+      - GOOGLE_MAPS_API_KEY=your-google-maps-api-key
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./backend/services/location-service:/app
+      - /app/node_modules
+    networks:
+      - hk-tourism-network
+
+  # Event Service
+  event-service:
+    build:
+      context: ./backend/services/event-service
+      dockerfile: Dockerfile
+    ports:
+      - "3003:3003"
+    environment:
+      - NODE_ENV=development
+      - PORT=3003
+      - MONGODB_URI=mongodb://mongodb:27017/hk-tourism-events
+      - REDIS_URL=redis://redis:6379
+      - HKTB_API_KEY=your-hktb-api-key
+    depends_on:
+      - mongodb
+      - redis
+    volumes:
+      - ./backend/services/event-service:/app
+      - /app/node_modules
+    networks:
+      - hk-tourism-network
+
+  # Privacy Service
+  privacy-service:
+    build:
+      context: ./backend/services/privacy-service
+      dockerfile: Dockerfile
+    ports:
+      - "3007:3007"
+    environment:
+      - NODE_ENV=development
+      - PORT=3007
+      - JWT_SECRET=your-jwt-secret-key
+      - VALID_API_KEYS=your-hashed-api-keys
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:80
+      - RATE_LIMIT_WINDOW_MS=900000
+      - RATE_LIMIT_MAX_REQUESTS=100
+      - STRICT_RATE_LIMIT_MAX=5
+    volumes:
+      - ./backend/services/privacy-service:/app
+      - /app/node_modules
+    networks:
+      - hk-tourism-network
+
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password
+      - MONGO_INITDB_DATABASE=hk-tourism
+    volumes:
+      - mongodb_data:/data/db
+      - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - hk-tourism-network
+
+  # Redis Cache
+  redis:
+    image: redis:7.2-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - hk-tourism-network
+
+  # PostgreSQL (for analytics and reporting)
+  postgres:
+    image: postgres:16
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=hk_tourism_analytics
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - hk-tourism-network
+
+  # Nginx (for serving static content and load balancing)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./frontend/web/dist:/usr/share/nginx/html:ro
+    depends_on:
+      - api-gateway
+    networks:
+      - hk-tourism-network
+
+volumes:
+  mongodb_data:
+  redis_data:
+  postgres_data:
+
+networks:
+  hk-tourism-network:
+    driver: bridge

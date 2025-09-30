@@ -1,0 +1,30 @@
+{
+  "current": {
+    "temperature": 24,
+    "condition": "sunny",
+    "humidity": 65,
+    "windSpeed": 12,
+    "uvIndex": 6
+  },
+  "forecast": [
+    {
+      "date": "2024-01-15",
+      "high": 26,
+      "low": 20,
+      "condition": "partly_cloudy",
+      "precipitation": 10
+    },
+    {
+      "date": "2024-01-16",
+      "high": 28,
+      "low": 22,
+      "condition": "sunny",
+      "precipitation": 0
+    }
+  ],
+  "recommendations": {
+    "outdoor": true,
+    "clothing": ["light_jacket", "comfortable_shoes"],
+    "activities": ["hiking", "sightseeing", "outdoor_dining"]
+  }
+}

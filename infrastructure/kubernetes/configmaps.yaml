@@ -1,0 +1,103 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-gateway-config
+  namespace: hk-tourism-ai
+data:
+  config.json: |
+    {
+      "services": {
+        "user-service": {
+          "url": "http://user-service.hk-tourism-ai.svc.cluster.local",
+          "timeout": 5000,
+          "retries": 3
+        },
+        "location-service": {
+          "url": "http://location-service.hk-tourism-ai.svc.cluster.local",
+          "timeout": 5000,
+          "retries": 3
+        },
+        "recommendation-service": {
+          "url": "http://recommendation-service.hk-tourism-ai.svc.cluster.local",
+          "timeout": 10000,
+          "retries": 2
+        },
+        "itinerary-service": {
+          "url": "http://itinerary-service.hk-tourism-ai.svc.cluster.local",
+          "timeout": 8000,
+          "retries": 2
+        },
+        "event-service": {
+          "url": "http://event-service.hk-tourism-ai.svc.cluster.local",
+          "timeout": 5000,
+          "retries": 3
+        },
+        "crowd-service": {
+          "url": "http://crowd-service.hk-tourism-ai.svc.cluster.local",
+          "timeout": 5000,
+          "retries": 3
+        },
+        "local-insights-service": {
+          "url": "http://local-insights-service.hk-tourism-ai.svc.cluster.local",
+          "timeout": 5000,
+          "retries": 3
+        },
+        "translation-service": {
+          "url": "http://translation-service.hk-tourism-ai.svc.cluster.local",
+          "timeout": 8000,
+          "retries": 2
+        },
+        "practical-tips-service": {
+          "url": "http://practical-tips-service.hk-tourism-ai.svc.cluster.local",
+          "timeout": 5000,
+          "retries": 3
+        },
+        "notification-service": {
+          "url": "http://notification-service.hk-tourism-ai.svc.cluster.local",
+          "timeout": 5000,
+          "retries": 3
+        },
+        "sustainability-service": {
+          "url": "http://sustainability-service.hk-tourism-ai.svc.cluster.local",
+          "timeout": 5000,
+          "retries": 3
+        },
+        "privacy-service": {
+          "url": "http://privacy-service.hk-tourism-ai.svc.cluster.local",
+          "timeout": 5000,
+          "retries": 3
+        },
+        "weather-service": {
+          "url": "http://weather-service.hk-tourism-ai.svc.cluster.local",
+          "timeout": 5000,
+          "retries": 3
+        }
+      },
+      "circuitBreaker": {
+        "timeout": 10000,
+        "errorThresholdPercentage": 50,
+        "resetTimeout": 30000
+      },
+      "rateLimit": {
+        "windowMs": 900000,
+        "max": 1000
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: hk-tourism-ai
+data:
+  LOG_LEVEL: "info"
+  CORS_ORIGIN: "https://hk-tourism-ai.com,https://www.hk-tourism-ai.com"
+  SESSION_TIMEOUT: "3600000"
+  CACHE_TTL: "300"
+  MAX_UPLOAD_SIZE: "10485760"
+  SUPPORTED_LANGUAGES: "en,zh-HK,zh-CN,ja,ko"
+  DEFAULT_LANGUAGE: "en"
+  TIMEZONE: "Asia/Hong_Kong"
+  WEATHER_UPDATE_INTERVAL: "300000"
+  CROWD_UPDATE_INTERVAL: "60000"
+  RECOMMENDATION_CACHE_TTL: "1800"

@@ -1,0 +1,62 @@
+{
+  "name": "hk-tourism-ai-platform",
+  "version": "1.0.0",
+  "description": "Hong Kong Tourism AI Platform - Personalized tourism experience with AI recommendations",
+  "private": true,
+  "workspaces": [
+    "frontend/mobile",
+    "frontend/web",
+    "backend/api-gateway",
+    "backend/services/*",
+    "shared/types"
+  ],
+  "scripts": {
+    "dev": "docker-compose up --build",
+    "dev:services": "docker-compose up --build api-gateway user-service recommendation-service location-service event-service mongodb redis",
+    "dev:frontend": "concurrently \"npm run dev:mobile\" \"npm run dev:web\"",
+    "dev:mobile": "cd frontend/mobile && npm run start",
+    "dev:web": "cd frontend/web && npm run dev",
+    "build": "npm run build:types && npm run build:backend && npm run build:frontend",
+    "build:types": "cd shared/types && npm run build",
+    "build:backend": "concurrently \"cd backend/api-gateway && npm run build\" \"cd backend/services/user-service && npm run build\"",
+    "build:frontend": "concurrently \"cd frontend/web && npm run build\"",
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "concurrently \"cd backend/api-gateway && npm test\" \"cd backend/services/user-service && npm test\"",
+    "test:frontend": "cd frontend/web && npm test",
+    "lint": "npm run lint:backend && npm run lint:frontend",
+    "lint:backend": "concurrently \"cd backend/api-gateway && npm run lint\" \"cd shared/types && npm run lint\"",
+    "lint:frontend": "cd frontend/web && npm run lint",
+    "clean": "npm run clean:backend && npm run clean:frontend",
+    "clean:backend": "rm -rf backend/*/dist backend/*/node_modules",
+    "clean:frontend": "rm -rf frontend/*/dist frontend/*/node_modules frontend/*/.next",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "setup": "npm install && npm run install:all",
+    "install:all": "concurrently \"cd frontend/mobile && npm install\" \"cd frontend/web && npm install\" \"cd backend/api-gateway && npm install\" \"cd backend/services/user-service && npm install\" \"cd backend/services/location-service && npm install\" \"cd backend/services/event-service && npm install\" \"cd shared/types && npm install\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/hk-tourism-ai-platform.git"
+  },
+  "keywords": [
+    "hong-kong",
+    "tourism",
+    "ai",
+    "recommendations",
+    "travel",
+    "mobile-app",
+    "microservices"
+  ],
+  "author": "Hong Kong Tourism Board",
+  "license": "MIT"
+}
