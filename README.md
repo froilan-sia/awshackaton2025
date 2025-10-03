@@ -33,8 +33,8 @@ The platform follows a microservices architecture with the following components:
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/your-org/hk-tourism-ai-platform.git
-   cd hk-tourism-ai-platform
+   git clone https://github.com/froilan-sia/awshackaton2025
+   cd awshackaton2025
    ```
 
 2. **Set up environment variables**
